@@ -138,11 +138,7 @@ def get_dict_email_domains_to_account_note_file_path():
     blacklist_domains = config.get('blacklist_domains')
     
     # Define exception domains and their corresponding account slugs
-    exception_domains = {
-        'staffbase.com': 'staffbase',
-        'atos.net': 'atos',
-        'hivestreaming.com': 'hive',
-    }
+    exception_domains = config.get('exception_domains')
     
     md_files = glob.glob(f"{directory}/*.md")
     domain_to_file = {}
@@ -399,9 +395,6 @@ if account_slug:
                 # Append the AI response to the account note file
                 with open(account_note_path, 'a', encoding='utf-8') as f:
                     f.write("\n\n\n")
-                    # f.write(f"### {datetime.now().strftime('%Y-%m-%d')} AI Response\n\n")
-                    # if emails_found: # Now part of the prompt
-                    #     f.write(f"\nTo: {', '.join(set(emails_found))}\n\n")
                     f.write(answer)
                     f.write("\n\n---\n\n")
                 print(f"\nℹ️  Appended AI response to account note for '{account_slug}' at: {account_note_path}")
@@ -422,21 +415,6 @@ else:
     except Exception as e:
         print(f"❌ Error opening chat log in CotEditor: {str(e)}")
 
-
-
-# run_time = round((time.time() - start_time), 3)
-# if run_time < 1:
-#     print(f'\n{os.path.basename(__file__)} finished in {round(run_time*1000)}ms at {datetime.now().strftime("%H:%M:%S")}.\n')
-# elif run_time < 60:
-#     print(f'\n{os.path.basename(__file__)} finished in {round(run_time)}s at {datetime.now().strftime("%H:%M:%S")}.\n')
-# elif run_time < 3600:
-#     print(f'\n{os.path.basename(__file__)} finished in {round(run_time/60)}mns at {datetime.now().strftime("%H:%M:%S")}.\n')
-# else:
-#     print(f'\n{os.path.basename(__file__)} finished in {round(run_time/3600, 2)}hrs at {datetime.now().strftime("%H:%M:%S")}.\n')
-
-
-# import time, os
-# from datetime import datetime
 
 print(
     f"\n{os.path.basename(__file__)} finished in "
