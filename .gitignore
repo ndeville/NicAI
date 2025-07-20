@@ -1,5 +1,6 @@
 # Nic Gitignore template
 
+config.yaml
 test/
 raw/
 data/

@@ -3,8 +3,16 @@ import os
 import time
 start_time = time.time()
 
-from openaee_responses_api import generate_response
-from extract_profile_data import linkedin_html_to_md
+# Load configurations from config.yaml
+import yaml
+script_dir = os.path.dirname(os.path.abspath(__file__))
+config_path = os.path.join(script_dir, "config.yaml")
+with open(config_path) as f:
+    config = yaml.safe_load(f)
+
+# Load my other modules
+from openaee_responses_api import generate_response # Generate responses from OpenAI API
+from extract_profile_data import linkedin_html_to_md # Extract LinkedIn profile data from HTML
 
 verbose = True
 if verbose:
@@ -18,11 +26,7 @@ def get_latest_modified_txt_file():
     import os
     import glob
 
-    directories=[
-        "/Users/nic/txt",
-        "/Users/nic/ai/chats",
-        "/Users/nic/vid",
-        ]
+    directories = config.get('txt_directories')
     
     # Get list of all .txt files across all directories
     txt_files = []
@@ -103,9 +107,7 @@ from typing import List, Optional
 
 def extract_emails(text: str):
 
-    exclude_domains = [
-        '@kaltura.com',
-        ]
+    exclude_domains = config.get('exclude_domains')
 
     pattern = re.compile(r'[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}')
     emails = pattern.findall(text)
@@ -133,16 +135,7 @@ def get_dict_email_domains_to_account_note_file_path():
 
     directory = os.getenv("KA_CLIENTS_NOTES")
 
-    blacklist_domains = [
-        'kaltura.com',
-        'kaltura.cloud',
-        'kaltura.email',
-        'kaltura.io',
-        'kaltura.info',
-        'kalturavideocloud.com',
-        'nicolasdeville.com',
-        'fut.io',
-    ]
+    blacklist_domains = config.get('blacklist_domains')
     
     # Define exception domains and their corresponding account slugs
     exception_domains = {
