@@ -1,7 +1,13 @@
 from datetime import datetime
 import os
 import time
+import sqlite3
 start_time = time.time()
+
+# Load environment variables from .env file
+from dotenv import load_dotenv
+load_dotenv()
+DB_BTOB = os.getenv("DB_BTOB")
 
 # Load configurations from config.yaml
 import yaml
@@ -13,12 +19,18 @@ with open(config_path) as f:
 # Load my other modules
 from openaee_responses_api import generate_response # Generate responses from OpenAI API
 from extract_profile_data import linkedin_html_to_md # Extract LinkedIn profile data from HTML
+import my_utils
+from my_utils import get_dict_domains_to_account_note_slugs
 
 verbose = True
 if verbose:
     print(f"\nℹ️  Verbose mode ENABLED.")
 else:
     print(f"\nℹ️  Verbose mode DISABLED.")
+
+# Get the blacklist of freemail domains to avoid matching them in the emails_found list for account note file lookup
+blacklist_freemail_domains = my_utils.get_blacklist_freemail_domains()
+
 
 # 1 - GET THE USER PROMPT FROM THE LATEST TXT FILE IN THE TXT FOLDER
 
@@ -74,11 +86,38 @@ def extract_linkedin_url(text):
             return url
     return None
 
+def linkedin_url_to_local_linkedin_html_path(linkedin_url):
+        
+    linkedin_handle = my_utils.linkedin_handle_from_url(linkedin_url)
+    
+
+    with sqlite3.connect(DB_BTOB) as conn:
+        cursor = conn.cursor()
+        
+        # Query the linkedin_profiles table for a matching handle
+        query = "SELECT file_path FROM linkedin_profiles WHERE linkedin_handle = ?"
+        cursor.execute(query, (linkedin_handle,))
+        result = cursor.fetchone()
+        
+        if result:
+            file_path = result[0]
+            if os.path.exists(file_path):
+                print(f"ℹ️  Found local HTML file for LinkedIn profile: {file_path}")
+                return file_path
+            else:
+                print(f"❌ Local HTML file not found at: {file_path}")
+                return None
+        else:
+            print(f"ℹ️  No matching LinkedIn profile found in database for handle: {linkedin_handle}")
+            return None
+    
+    
+
 # Check if a LinkedIn URL is in the user prompt
 linkedin_url = extract_linkedin_url(user_prompt)
 if linkedin_url:
-    print(f"LinkedIn profile URL found: {linkedin_url}")
-    linkedin_md = linkedin_html_to_md(linkedin_url)
+    print(f"\nℹ️  LinkedIn profile URL found: {linkedin_url}")
+    linkedin_md = linkedin_html_to_md(linkedin_url_to_local_linkedin_html_path(linkedin_url))
     # Increment headers in linkedin_md by 2 levels (e.g., # to ###)
     lines = linkedin_md.split('\n')
     modified_lines = []
@@ -94,7 +133,7 @@ if linkedin_url:
         else:
             modified_lines.append(line)
     linkedin_md = '\n'.join(modified_lines)
-    print(f"\nℹ️  LinkedIn profile data:\n\n{linkedin_md}")
+    # print(f"\nℹ️  LinkedIn profile data:\n\n{linkedin_md}")
     user_prompt = f"{user_prompt}\n\n## Linkedin profile data\n\n{linkedin_md}"
 else:
     print("\nℹ️  (TERMINAL ONLY) No LinkedIn profile URL found in the user prompt.")
@@ -104,6 +143,7 @@ else:
 
 import re
 from typing import List, Optional
+
 
 def extract_emails(text: str):
 
@@ -124,50 +164,9 @@ def extract_emails(text: str):
 
 emails_found = extract_emails(user_prompt)
 
-def get_dict_email_domains_to_account_note_file_path():
-    """
-    Scan a directory for .md files and extract email domains from each file, excluding @kaltura.com.
-    Returns a dictionary mapping each email domain to the account slug path.
-    Includes logic for exceptions where specific email domains always map to a predefined account slug.
-    """
-    import re
-    import glob
 
-    directory = os.getenv("KA_CLIENTS_NOTES")
 
-    blacklist_domains = config.get('blacklist_domains')
-    
-    # Define exception domains and their corresponding account slugs
-    exception_domains = config.get('exception_domains')
-    
-    md_files = glob.glob(f"{directory}/*.md")
-    domain_to_file = {}
-    
-    email_pattern = r'\b[A-Za-z0-9._%+-]+@([A-Za-z0-9.-]+\.[A-Z|a-z]{2,})\b'
-    
-    for md_file in md_files:
-        filename = os.path.basename(md_file)
-        full_path = md_file
-        
-        try:
-            with open(md_file, 'r', encoding='utf-8') as f:
-                content = f.read()
-                emails = re.findall(email_pattern, content)
-                # Extract just the domain part and exclude kaltura.com
-                for domain in emails:
-                    domain_lower = domain.lower()
-                    if domain_lower not in blacklist_domains:
-                        # Check if domain is in exceptions; if so, use predefined slug
-                        if domain_lower in exception_domains:
-                            domain_to_file[domain_lower] = exception_domains[domain_lower]
-                        else:
-                            domain_to_file[domain_lower] = full_path.replace(directory, '').replace('.md', '').lstrip('/')
-        except Exception as e:
-            print(f"Error reading {filename}: {e}")
 
-    # pp.pprint(domain_to_file)
-
-    return domain_to_file
 
 # Get the account slugs from the user prompt either via command or via emails
 account_slugs = set()
@@ -198,10 +197,11 @@ else:
     for email in emails_found:
         if '@' in email:
             domain = email.split('@')[1]
-            unique_domains.add(domain)
+            if domain not in blacklist_freemail_domains:
+                unique_domains.add(domain)
     unique_domains = list(unique_domains)
     if unique_domains:
-        dict_email_domains_to_account_note_file_path = get_dict_email_domains_to_account_note_file_path()
+        dict_email_domains_to_account_note_file_path = get_dict_domains_to_account_note_slugs()
         for domain in unique_domains:
             account_slug = dict_email_domains_to_account_note_file_path.get(domain)
             if account_slug:
@@ -275,8 +275,10 @@ if os.path.exists(prompts_folder_path):
     # Print the dictionary for user reference
     print("\nAvailable system prompts:\n")
     for key, value in prompt_files_dict.items():
+
         print(f"{key}: {value.replace('.md', '')}")
 else:
+
     print(f"Directory {prompts_folder_path} does not exist.")
 
 print(f"\n(loaded in {round((time.time() - start_time)*1000)}ms)")
@@ -292,15 +294,17 @@ if selected_file:
         with open(file_path, 'r', encoding='utf-8') as file:
             system_prompt = file.read()
             
+        print(f"\nℹ️  Using system prompt from: {selected_file}")
+
         # If selected file starts with "_", prepend NicAI.md content
         if selected_file.startswith('_'):
             nicai_path = os.path.join(prompts_folder_path, 'NicAI.md')
             if os.path.exists(nicai_path):
                 with open(nicai_path, 'r', encoding='utf-8') as nicai_file:
                     system_prompt = nicai_file.read() + "\n\n# TASK CONTEXT\n\n" + system_prompt
-                print(f"\nℹ️  Prepended NicAI.md to system prompt")
+
+                print(f"\tℹ️  + prepended NicAI.md to system prompt")
                     
-        print(f"\nℹ️  Using system prompt from: {selected_file}")
 
         # Complement some system prompts
         if "Email" in selected_file: # add common output format for emails
@@ -308,6 +312,7 @@ if selected_file:
             with open(email_format_path, 'r', encoding='utf-8') as email_format_file:
                 email_format_content = email_format_file.read()
                 system_prompt += email_format_content
+
                 print(f"    + email format instructions appended to system prompt")
 
     else:
@@ -326,32 +331,32 @@ answer = generate_response(system_prompt, user_prompt, model="o3", filters=None,
 print(f"\nℹ️  query run time: {(lambda r: (f'{round(r*1000)}ms' if r<1 else f'{round(r)}s' if r<120 else f'{round(r/60)}mns' if r<3600 else f'{round(r/3600,2)}hrs'))(time.time()-query_start_time)} ")
 
 
-# 4 - WRITE THE RESPONSE TO A TXT FILE
+# # 4 - WRITE THE RESPONSE TO A TXT FILE ------- LOGIC ADDED TO THE OPENAEE RESPONSES API DIRECTLY
 
-# Define the output directory for chat logs
-output_dir = "/Users/nic/ai/chats"
+# # Define the output directory for chat logs
+# output_dir = "/Users/nic/ai/chats"
 
-# Ensure the output directory exists
-if not os.path.exists(output_dir):
-    os.makedirs(output_dir)
+# # Ensure the output directory exists
+# if not os.path.exists(output_dir):
+#     os.makedirs(output_dir)
 
-# Generate a timestamp for the filename
-timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+# # Generate a timestamp for the filename
+# timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-# Create the output filename with timestamp
-output_filename = f"chat_{timestamp}.txt"
-output_path = os.path.join(output_dir, output_filename)
+# # Create the output filename with timestamp
+# output_filename = f"chat_{timestamp}.txt"
+# output_path = os.path.join(output_dir, output_filename)
 
-# Write the user prompt and the generated answer to the file
-with open(output_path, 'w', encoding='utf-8') as f:
-    f.write("<original_user_prompt>\n")
-    f.write(user_prompt)
-    f.write("\n</original_user_prompt>\n\n\n\n\n")
-    f.write("<original_ai_response>\n\n")
-    f.write(answer)
-    f.write("\n\n</original_ai_response>\n")
+# # Write the user prompt and the generated answer to the file
+# with open(output_path, 'w', encoding='utf-8') as f:
+#     f.write("<original_user_prompt>\n")
+#     f.write(user_prompt)
+#     f.write("\n</original_user_prompt>\n\n\n\n\n")
+#     f.write("<original_ai_response>\n\n")
+#     f.write(answer)
+#     f.write("\n\n</original_ai_response>\n")
 
-print(f"\nℹ️  Chat log saved to: {output_path}")
+# print(f"\nℹ️  Chat log saved to: {output_path}")
 
 
 # 5 - COPY THE ANSWER TO THE CLIPBOARD
@@ -407,13 +412,13 @@ if account_slug:
             print(f"❌ Account note file not found for '{account_slug}' at: {account_note_path}")
     else:
         print("❌ Environment variable 'KA_CLIENTS_NOTES' not set for account notes directory.")
-else:
-    print("\nℹ️  No account slug found in the user prompt. Skipping opening account notes, opening chat log .txt instead.")
-    try:
-        subprocess.run(['open', '-a', 'CotEditor', output_path])
-        print(f"\nℹ️  Opened chat log in CotEditor: {output_filename}")
-    except Exception as e:
-        print(f"❌ Error opening chat log in CotEditor: {str(e)}")
+# else:
+#     print("\nℹ️  No account slug found in the user prompt. Skipping opening account notes, opening chat log .txt instead.")
+#     try:
+#         subprocess.run(['open', '-a', 'CotEditor', output_path])
+#         print(f"\nℹ️  Opened chat log in CotEditor: {output_filename}")
+#     except Exception as e:
+#         print(f"❌ Error opening chat log in CotEditor: {str(e)}")
 
 
 print(
