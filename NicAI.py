@@ -60,7 +60,9 @@ def get_latest_modified_txt_file():
 
 user_prompt_from_txt = get_latest_modified_txt_file()
 
-print(f"\nℹ️  User prompt from txt file: {user_prompt_from_txt[0]}")
+print(f"\n{user_prompt_from_txt[1]}")
+
+print(f"\n\n==============================================\n\nℹ️  User prompt from txt file: {user_prompt_from_txt[0]}\n\n==============================================\n\n")
 
 user_prompt = f"\n\n# TASK CONTEXT\n\n{user_prompt_from_txt[1]}"
 
@@ -284,6 +286,29 @@ else:
 print(f"\n(loaded in {round((time.time() - start_time)*1000)}ms)")
 
 user_input = input("\n> Enter the code of the system prompt to use: ")
+
+
+
+# Validate user input
+while True:
+    if not user_input.strip():  # Check if input is empty
+        print("Please enter a valid code number.")
+        user_input = input("> Enter the code of the system prompt to use: ")
+        continue
+        
+    if not user_input.isdigit():  # Check if input is numeric
+        print("Please enter a numeric code.")
+        user_input = input("> Enter the code of the system prompt to use: ")
+        continue
+        
+    input_num = int(user_input)
+    if input_num not in prompt_files_dict:  # Check if code exists in dictionary
+        print(f"Code {input_num} is not valid. Please enter a code from the list above.")
+        user_input = input("> Enter the code of the system prompt to use: ")
+        continue
+        
+    break  # Valid input received, exit loop
+
 
 
 system_prompt = ""
