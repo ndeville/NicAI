@@ -182,7 +182,7 @@ for line in user_prompt.split('\n'):
             # if verbose:
             #     print(f"\nℹ️  Account slug extracted: {account_slug}")
             account_slugs.add(account_slug)
-            break
+            # break
 
 if account_slugs and len(account_slugs) > 0:
     # if verbose:
