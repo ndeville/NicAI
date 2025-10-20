@@ -22,7 +22,13 @@ from extract_profile_data import linkedin_html_to_md # Extract LinkedIn profile 
 import my_utils
 from my_utils import get_dict_domains_to_account_note_slugs
 
+
+"""CONFIGURATION"""
+
+# model = "gpt-5"
+default_model = "o3" # can be overridden by user input for each task
 verbose = True
+
 if verbose:
     print(f"\nℹ️  Verbose mode ENABLED.")
 else:
@@ -346,109 +352,114 @@ else:
     print(f"No system prompt found for input: {user_input}")
 
 
+# Choose the model
 
+all_models = {
+    1: "gpt-4",
+    2: "gpt-4o",
+    3: "gpt-4o-mini",
+    4: "gpt-4o-transcribe",
+    5: "gpt-5",
+    6: "gpt-5-mini",
+    7: "gpt-5-nano",
+    8: "o3",
+    9: "o3-deep-research",
+    10: "o3-mini",
+    11: "o3-pro",
+    12: "o4-mini"
+}
+
+print("\nAvailable models:")
+for key, value in all_models.items():
+    print(f"  {key}: {value}")
+
+model_choice = input(f"\nEnter the model to use (hit enter for default: {default_model}) > ")
+if model_choice:
+    if model_choice.isdigit():
+        models = [all_models[int(model_choice)]]
+    elif "," in model_choice:
+        models = [all_models[int(x)] for x in model_choice.split(",")]
+else:
+    print(f"ℹ️  No model choice provided. Using default model: {default_model}")
+    models = [default_model]
 
 
 
 # 3 - GENERATE THE RESPONSE
-query_start_time = time.time()
-answer = generate_response(system_prompt, user_prompt, model="o3", filters=None, stream=True)
-print(f"\nℹ️  query run time: {(lambda r: (f'{round(r*1000)}ms' if r<1 else f'{round(r)}s' if r<120 else f'{round(r/60)}mns' if r<3600 else f'{round(r/3600,2)}hrs'))(time.time()-query_start_time)} ")
+
+for count_model, model in enumerate(models, 1):
+
+    # query_start_time = time.time() # task time now in openaee_responses_api
+
+    print(f"\n\n==== 🤖  model {count_model}/{len(models)}: {model}\n")
+
+    answer = generate_response(system_prompt, user_prompt, model=model, filters=None, stream=True)
 
 
-# # 4 - WRITE THE RESPONSE TO A TXT FILE ------- LOGIC ADDED TO THE OPENAEE RESPONSES API DIRECTLY
+    # 4 - COPY THE ANSWER TO THE CLIPBOARD
 
-# # Define the output directory for chat logs
-# output_dir = "/Users/nic/ai/chats"
+    import subprocess
+    process = subprocess.Popen("pbcopy", universal_newlines=True, stdin=subprocess.PIPE)
+    process.communicate(answer)
 
-# # Ensure the output directory exists
-# if not os.path.exists(output_dir):
-#     os.makedirs(output_dir)
-
-# # Generate a timestamp for the filename
-# timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-
-# # Create the output filename with timestamp
-# output_filename = f"chat_{timestamp}.txt"
-# output_path = os.path.join(output_dir, output_filename)
-
-# # Write the user prompt and the generated answer to the file
-# with open(output_path, 'w', encoding='utf-8') as f:
-#     f.write("<original_user_prompt>\n")
-#     f.write(user_prompt)
-#     f.write("\n</original_user_prompt>\n\n\n\n\n")
-#     f.write("<original_ai_response>\n\n")
-#     f.write(answer)
-#     f.write("\n\n</original_ai_response>\n")
-
-# print(f"\nℹ️  Chat log saved to: {output_path}")
+    print(f"\n📝  Copied answer to clipboard\n")
 
 
-# 5 - COPY THE ANSWER TO THE CLIPBOARD
+    # 5 - ADD TO THE ACCOUNT NOTE FILE OR TEXT EDITOR
 
-# Copy the answer to the clipboard
-import subprocess
-process = subprocess.Popen("pbcopy", universal_newlines=True, stdin=subprocess.PIPE)
-process.communicate(answer)
-
-print(f"\n📝  Copied answer to clipboard: {answer}")
-
-
-
-# 6 - ADD TO THE ACCOUNT NOTE FILE OR TEXT EDITOR
-
-# Select the account slug to use to update the account note file
-account_slug = None
-if account_slugs and len(account_slugs) == 1:
-    account_slug = list(account_slugs)[0]
-elif account_slugs and len(account_slugs) > 1:
-    for i, slug in enumerate(account_slugs, 1):
-        print(f"  {i}. {slug}")
-    while True:
-        try:
-            choice = int(input("\n> Enter the number of the account slug to use: "))
-            if 1 <= choice <= len(account_slugs):
-                account_slug = list(account_slugs)[choice - 1]
-                break
-            else:
-                print(f"Please enter a number between 1 and {len(account_slugs)}.")
-        except ValueError:
-            print("Please enter a valid number.")
-
-
-if account_slug:
-    account_notes_dir = os.getenv("KA_CLIENTS_NOTES")
-    if account_notes_dir:
-        account_note_path = os.path.join(account_notes_dir, f"{account_slug}.md")
-        if os.path.exists(account_note_path):
+    # Select the account slug to use to update the account note file
+    account_slug = None
+    if account_slugs and len(account_slugs) == 1:
+        account_slug = list(account_slugs)[0]
+    elif account_slugs and len(account_slugs) > 1:
+        for i, slug in enumerate(account_slugs, 1):
+            print(f"  {i}. {slug}")
+        while True:
             try:
-                # Append the AI response to the account note file
-                with open(account_note_path, 'a', encoding='utf-8') as f:
-                    f.write("\n\n\n")
-                    f.write(answer)
-                    f.write("\n\n---\n\n")
-                print(f"\nℹ️  Appended AI response to account note for '{account_slug}' at: {account_note_path}")
-                # Open the account note file in Cursor
-                subprocess.run(['open', '-a', 'Cursor', account_note_path])
-                print(f"\nℹ️  Opened account note for '{account_slug}' in Cursor: {account_note_path}")
-            except Exception as e:
-                print(f"❌ Error opening account note in Cursor: {str(e)}")
+                choice = int(input("\n> Enter the number of the account slug to use: "))
+                if 1 <= choice <= len(account_slugs):
+                    account_slug = list(account_slugs)[choice - 1]
+                    break
+                else:
+                    print(f"Please enter a number between 1 and {len(account_slugs)}.")
+            except ValueError:
+                print("Please enter a valid number.")
+
+
+    if account_slug:
+        account_notes_dir = os.getenv("KA_CLIENTS_NOTES")
+        if account_notes_dir:
+            account_note_path = os.path.join(account_notes_dir, f"{account_slug}.md")
+            if os.path.exists(account_note_path):
+                try:
+                    # Append the AI response to the account note file
+                    with open(account_note_path, 'a', encoding='utf-8') as f:
+                        f.write("\n\n\n")
+                        f.write(answer)
+                        f.write("\n\n---\n\n")
+                    print(f"\nℹ️  Appended AI response to account note for '{account_slug}' at: {account_note_path}")
+                    # Open the account note file in Cursor
+                    subprocess.run(['open', '-a', 'Cursor', account_note_path])
+                    print(f"\nℹ️  Opened account note for '{account_slug}' in Cursor: {account_note_path}")
+                except Exception as e:
+                    print(f"❌ Error opening account note in Cursor: {str(e)}")
+            else:
+                print(f"❌ Account note file not found for '{account_slug}' at: {account_note_path}")
         else:
-            print(f"❌ Account note file not found for '{account_slug}' at: {account_note_path}")
-    else:
-        print("❌ Environment variable 'KA_CLIENTS_NOTES' not set for account notes directory.")
-# else:
-#     print("\nℹ️  No account slug found in the user prompt. Skipping opening account notes, opening chat log .txt instead.")
-#     try:
-#         subprocess.run(['open', '-a', 'CotEditor', output_path])
-#         print(f"\nℹ️  Opened chat log in CotEditor: {output_filename}")
-#     except Exception as e:
-#         print(f"❌ Error opening chat log in CotEditor: {str(e)}")
+            print("❌ Environment variable 'KA_CLIENTS_NOTES' not set for account notes directory.")
+    # else:
+    #     print("\nℹ️  No account slug found in the user prompt. Skipping opening account notes, opening chat log .txt instead.")
+    #     try:
+    #         subprocess.run(['open', '-a', 'CotEditor', output_path])
+    #         print(f"\nℹ️  Opened chat log in CotEditor: {output_filename}")
+    #     except Exception as e:
+    #         print(f"❌ Error opening chat log in CotEditor: {str(e)}")
 
 
 print(
     f"\n{os.path.basename(__file__)} finished in "
     # f"{(lambda r: (f'{round(r*1000)}ms' if r<1 else f'{round(r)}s' if r<60 else f'{round(r/60)}mns' if r<3600 else f'{round(r/3600,2)}hrs'))(time.time()-start_time)} "
     f"{(lambda r: (f'{round(r*1000)}ms' if r<1 else f'{round(r)}s' if r<120 else f'{round(r/60)}mns' if r<3600 else f'{round(r/3600,2)}hrs'))(time.time()-start_time)} "
+    f"(round({time.time()-start_time}, 2)s) "
     f"at {datetime.now().strftime('%H:%M:%S')}.\n"
 )
