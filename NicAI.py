@@ -25,8 +25,7 @@ from my_utils import get_dict_domains_to_account_note_slugs
 
 """CONFIGURATION"""
 
-# model = "gpt-5"
-default_model = "o3" # can be overridden by user input for each task
+default_model = "gpt-5" # can be overridden by user input for each task
 verbose = True
 
 if verbose:
